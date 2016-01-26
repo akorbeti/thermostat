@@ -1,4 +1,4 @@
-#include <DHT.h>
+#include "DHT.h"
 
 #include <Wire.h>
 #include <Arduino.h>
@@ -13,6 +13,7 @@
 #define _Digole_Serial_UART_
 
 #define DEBOUNCE_DELAY 5
+#define NO_BUTTON_DELAY 10000
 #define CHANGE_MENU_DELAY 1000
 #define DISPLAY_REFRESH_DELAY 5000
 
@@ -45,6 +46,7 @@ SimpleTimer timer;
 Encoder myEnc(3, 4);
 long oldPosition  = -999;
 long lastDebounceMillis = 0;
+long lastButtonPressedMillis = 0;
 boolean changedMenu = false;
 
 int suspendForMinutes = 120;
@@ -95,7 +97,9 @@ void setup() {
   //  attachInterrupt(digitalPinToInterrupt(8), furnaceStateChange, CHANGE);
   attachInterrupt(digitalPinToInterrupt(3), encoderCallback, CHANGE);
 
+  timer.setInterval(1000, everySecCallback);
   timer.setInterval(60000, everyMinuteCallback);
+
 }
 
 void loop() {
@@ -126,16 +130,20 @@ void draw_timer() {
     } else {
       mydisp.drawStr(0, 1, "  Normal operation    ");
     }
+
     drawMenuFlag = false;
   }
 }
 
 void draw_menu() {
   if (drawMenuFlag) {
+
     mydisp.drawStr(2, 1, "Target temp:       ");
     mydisp.setPrintPos(15, 1);
     mydisp.print(targetTemp, 1);
     drawMenuFlag = false;
+
+
   }
 }
 
@@ -149,11 +157,11 @@ void draw_norm() {
 
     float h = dht.readHumidity();
     float t = dht.readTemperature();
-    
+
     if (isnan(h) || isnan(t)) {
       mydisp.drawStr(18, 3, "Er");
     } else {
-        mydisp.drawStr(18, 3, "Ok");
+      mydisp.drawStr(18, 3, "Ok");
     }
 
     if (digitalRead(FURNACE_BURNING_IN)) {
@@ -215,6 +223,7 @@ void draw_norm() {
 
 void encoderCallback() {
   if (millis() - lastDebounceMillis > DEBOUNCE_DELAY) {
+    buttonPressed();
     if (drawMethod == DISPLAY_MENU ) {
       long newPosition = myEnc.read() / 4;
       if (newPosition > oldPosition) {
@@ -261,6 +270,7 @@ void encoderCallback() {
 void setDrawMethod() {
   if (millis() - lastDebounceMillis > CHANGE_MENU_DELAY) {
     beep();
+    buttonPressed();
     if (drawMethod == DISPLAY_NORM) {
       drawMethod = DISPLAY_MENU;
       drawMenuFlag = true;
@@ -278,13 +288,11 @@ void setDrawMethod() {
   }
 }
 
-
 void beep() {
   digitalWrite(BUZZER, HIGH);
   delay(20);
   digitalWrite(BUZZER, LOW);
 }
-
 
 void everyMinuteCallback() {
   if (suspendForMinutes > 0) {
@@ -296,6 +304,25 @@ void everyMinuteCallback() {
   }
 }
 
+void everySecCallback() {
+
+  if (drawMethod != DISPLAY_NORM) {
+    mydisp.setPrintPos(0, 3);
+    mydisp.print((NO_BUTTON_DELAY - (millis() - lastButtonPressedMillis)) / 1000);
+  }
+  if (((millis() - lastButtonPressedMillis) > NO_BUTTON_DELAY) && drawMethod != DISPLAY_NORM) {
+    drawMethod = DISPLAY_NORM;
+    drawMenuFlag = true;
+    mydisp.clearScreen(); //CLear screen
+
+  }
+}
+
+void buttonPressed() {
+  lastButtonPressedMillis = millis();
+  Serial.println(lastButtonPressedMillis);
+
+}
 
 void furnaceStateChange() {
 
